@@ -326,6 +326,81 @@ const isWrapCol = (colIndex: number, colName: string, cols: ReturnType<typeof ma
   return /issue|problem|remark|note|comment|description|action|reason|detail|work\s*done|root\s*cause/i.test(h)
 }
 
+/**
+ * How a column sizes itself. The table is auto-layout, so:
+ *  - `fit`  (dates, numbers): `w-[1%]` + nowrap → exactly as wide as its content, never more.
+ *  - `text` (machine etc.):   `w-[1%]` + an inner box sized to its content but capped, so one
+ *                             long name ("ASSEMBLY (NEW MACHINE)") wraps instead of widening
+ *                             the whole column.
+ *  - `wrap` (issue, remark):  no width → these soak up all the spare room on wide screens and
+ *                             wrap on narrow ones, never shrinking below a readable minimum.
+ */
+type ColKind = 'fit' | 'text' | 'wrap'
+const colKind = (
+  colIndex: number,
+  colName: string,
+  cols: ReturnType<typeof maintenanceColumns>,
+  numericCols: number[],
+): ColKind => {
+  if (numericCols.includes(colIndex)) return 'fit'
+  if (isWrapCol(colIndex, colName, cols)) return 'wrap'
+  if (colIndex === cols.expectedDate || colIndex === cols.actualDate || /date|time/i.test(colName)) return 'fit'
+  return 'text'
+}
+const TD_BY_KIND: Record<ColKind, string> = {
+  fit: 'w-[1%] whitespace-nowrap',
+  text: 'w-[1%] whitespace-normal',
+  wrap: 'whitespace-normal',
+}
+/** Inner box for wrapping cells — gives the column a real width the table has to respect. */
+const BOX_BY_KIND: Record<ColKind, string> = {
+  fit: '',
+  text: 'w-max max-w-[8rem] sm:max-w-[9.5rem] [overflow-wrap:anywhere]',
+  wrap: 'min-w-[200px] sm:min-w-[240px] [overflow-wrap:anywhere] leading-relaxed',
+}
+
+/** The status pill — shared by the table cell and the phone card. */
+function StatusBadge({ status }: { status: ReturnType<typeof rowMaintenanceStatus> }) {
+  return (
+    <>
+      {status === 'completed' && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+          ✓ Completed
+        </span>
+      )}
+      {status === 'delayed' && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+          ⏱ Completed (Delayed)
+        </span>
+      )}
+      {status === 'pending' && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 text-sky-800">
+          ⏳ Pending
+        </span>
+      )}
+      {status === 'overdue' && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
+          ⚠ Overdue
+        </span>
+      )}
+      {status === 'none' && <span className="text-slate-400">–</span>}
+    </>
+  )
+}
+
+/** Phones are too narrow for a 7-column table, so each row becomes a card there. */
+const PHONE_QUERY = '(max-width: 639px)'
+function useIsPhone() {
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY)
+    const on = () => setPhone(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return phone
+}
+
 export function MaintenanceReportTable({
   sheet,
   rows,
@@ -350,6 +425,10 @@ export function MaintenanceReportTable({
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
   const [hasOverflow, setHasOverflow] = useState(false)
+  const isPhone = useIsPhone()
+  // On a phone the cards are the default; the table stays one tap away for its column filters.
+  const [phoneTable, setPhoneTable] = useState(false)
+  const showCards = isPhone && !phoneTable
 
   const thWrap = 'px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-white align-bottom leading-[1.25]'
 
@@ -377,7 +456,7 @@ export function MaintenanceReportTable({
       ro.disconnect()
       window.removeEventListener('resize', checkScroll)
     }
-  }, [checkScroll, rows.length])
+  }, [checkScroll, rows.length, showCards])
 
   const step = (dir: -1 | 1) => {
     scroller.current?.scrollBy({ left: dir * 300, behavior: 'smooth' })
@@ -407,6 +486,78 @@ export function MaintenanceReportTable({
         </div>
       )}
 
+      {isPhone && (
+        <div className="flex justify-end px-3 py-2 border-b border-[var(--hairline)] bg-slate-50/60">
+          <button
+            type="button"
+            onClick={() => setPhoneTable((v) => !v)}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-[var(--hairline)] bg-white text-slate-700 active:scale-95"
+          >
+            {showCards ? 'Table view (filters)' : 'Card view'}
+          </button>
+        </div>
+      )}
+
+      {showCards && (
+        <div className="max-h-[70vh] overflow-y-auto scroll-area divide-y divide-[var(--hairline)]">
+          {rows.length === 0 && <div className="p-6 text-center text-sm text-slate-400">No rows</div>}
+          {rows.map((row, r) => {
+            const status = hasStatusCol ? rowMaintenanceStatus(row, cols, todayISO) : 'none'
+            const at = (i: number) => (i >= 0 ? (row[i] ?? '').trim() : '')
+            const shown = new Set([cols.machine, cols.date, cols.issue, cols.remark, cols.expectedDate, cols.actualDate])
+            const extra = sheet.columns
+              .map((name, i) => ({ name, i, val: at(i) }))
+              .filter((x) => !shown.has(x.i) && x.val)
+            return (
+              <div key={r} className="px-3.5 py-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-[13.5px] text-slate-800 [overflow-wrap:anywhere]">{at(cols.machine) || '–'}</div>
+                    <div className="text-[11px] text-slate-500">{at(cols.date)}</div>
+                  </div>
+                  {hasStatusCol && (
+                    <div className="shrink-0">
+                      <StatusBadge status={status} />
+                    </div>
+                  )}
+                </div>
+                {at(cols.issue) && (
+                  <div className="text-[12.5px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: 'var(--ink)' }}>
+                    {at(cols.issue)}
+                  </div>
+                )}
+                {(cols.expectedDate >= 0 || cols.actualDate >= 0) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px] text-slate-500">
+                    {cols.expectedDate >= 0 && (
+                      <span>
+                        Expected: <b className="text-slate-700 font-semibold">{at(cols.expectedDate) || '–'}</b>
+                      </span>
+                    )}
+                    {cols.actualDate >= 0 && (
+                      <span>
+                        Actual: <b className="text-slate-700 font-semibold">{at(cols.actualDate) || '–'}</b>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {at(cols.remark) && (
+                  <div className="text-[12px] leading-relaxed text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5 [overflow-wrap:anywhere]">
+                    <span className="font-semibold text-slate-500">Remark: </span>
+                    {at(cols.remark)}
+                  </div>
+                )}
+                {extra.map((x) => (
+                  <div key={x.i} className="text-[11.5px] text-slate-500 [overflow-wrap:anywhere]">
+                    {x.name}: <span className="text-slate-700">{x.val}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!showCards && (<>
       {/* Floating Left Button on Table Edge */}
       {hasOverflow && canLeft && (
         <button
@@ -436,19 +587,17 @@ export function MaintenanceReportTable({
         className="overflow-x-auto max-h-[70vh] scroll-area"
         onScroll={checkScroll}
       >
-        <table className="w-full text-left border-collapse min-w-max">
+        <table className="w-full text-left border-collapse">
           <thead>
             <tr style={{ background: 'linear-gradient(180deg,#1e293b,#0f172a)' }}>
               {sheet.columns.map((colName, c) => {
                 const isNumCol = sheet.numericCols.includes(c)
                 const hasFilter = filters[c] && filters[c].length > 0
-                const isWrap = isWrapCol(c, colName, cols)
+                const kind = colKind(c, colName, cols, sheet.numericCols)
                 return (
                   <th
                     key={c}
-                    className={`${thWrap} ${isNumCol ? 'text-right' : 'text-left'} ${
-                      isWrap ? 'min-w-[180px] max-w-[280px] sm:min-w-[220px] sm:max-w-[360px]' : ''
-                    }`}
+                    className={`${thWrap} ${kind === 'wrap' ? 'whitespace-nowrap' : 'w-[1%]'} ${isNumCol ? 'text-right' : 'text-left'}`}
                   >
                     <div className={`flex items-center gap-1.5 ${isNumCol ? 'justify-end' : 'justify-start'}`}>
                       <span>{colName || `Col ${c + 1}`}</span>
@@ -469,7 +618,7 @@ export function MaintenanceReportTable({
                 )
               })}
               {hasStatusCol && (
-                <th className={`${thWrap} text-center min-w-[130px]`}>
+                <th className={`${thWrap} whitespace-nowrap w-[1%] text-center`}>
                   <div className="flex items-center justify-center gap-1.5">
                     <span>Status</span>
                     <button
@@ -516,46 +665,22 @@ export function MaintenanceReportTable({
                     const val = row[c] ?? ''
                     const isNumCol = sheet.numericCols.includes(c)
                     const isMachineCol = c === cols.machine
-                    const isWrap = isWrapCol(c, sheet.columns[c] ?? '', cols)
+                    const kind = colKind(c, sheet.columns[c] ?? '', cols, sheet.numericCols)
                     return (
                       <td
                         key={c}
-                        className={`px-3 py-2.5 text-[12.5px] ${
-                          isNumCol
-                            ? 'text-right font-mono whitespace-nowrap'
-                            : isWrap
-                            ? 'text-left whitespace-normal break-words min-w-[180px] max-w-[280px] sm:min-w-[220px] sm:max-w-[360px] leading-relaxed'
-                            : 'text-left whitespace-nowrap'
+                        className={`px-3 py-2.5 text-[12.5px] align-middle ${TD_BY_KIND[kind]} ${
+                          isNumCol ? 'text-right font-mono' : 'text-left'
                         } ${isMachineCol ? 'font-bold text-slate-800' : ''}`}
                         style={{ color: val ? 'var(--ink)' : EMPTY_INK }}
                       >
-                        {val || '–'}
+                        {kind === 'fit' ? val || '–' : <div className={BOX_BY_KIND[kind]}>{val || '–'}</div>}
                       </td>
                     )
                   })}
                   {hasStatusCol && (
-                    <td className="px-3 py-2.5 text-center whitespace-nowrap min-w-[130px]">
-                      {status === 'completed' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                          ✓ Completed
-                        </span>
-                      )}
-                      {status === 'delayed' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
-                          ⏱ Completed (Delayed)
-                        </span>
-                      )}
-                      {status === 'pending' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 text-sky-800">
-                          ⏳ Pending
-                        </span>
-                      )}
-                      {status === 'overdue' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
-                          ⚠ Overdue
-                        </span>
-                      )}
-                      {status === 'none' && <span className="text-slate-400">–</span>}
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap w-[1%]">
+                      <StatusBadge status={status} />
                     </td>
                   )}
                 </tr>
@@ -564,6 +689,7 @@ export function MaintenanceReportTable({
           </tbody>
         </table>
       </div>
+      </>)}
 
       {popover && (
         <ColumnFilterPopover

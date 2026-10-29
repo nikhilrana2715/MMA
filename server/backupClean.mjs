@@ -115,6 +115,9 @@ export function setupBackupClean(app, { DATA_DIR, FILES_DIR, whoIs, audit, pushA
   // because there is only one place that decides what "matching" means.
   function selectRecords({ from, to, types, months }) {
     const wanted = new Set(types && types.length ? types.filter((type) => CLEANABLE.includes(type)) : CLEANABLE)
+    // Types were asked for but none are cleanable: match nothing. Passing an empty list on
+    // would make the query fall back to "every resource" — the opposite of what was asked.
+    if (!wanted.size) return []
     const monthSet = months && months.length ? new Set(months) : null
     return database.selectCleanupRecords({ from, to, types: [...wanted], months: monthSet ? [...monthSet] : null })
   }
@@ -181,12 +184,21 @@ export function setupBackupClean(app, { DATA_DIR, FILES_DIR, whoIs, audit, pushA
   // ---- 2. paginated detail for one month ----------------------------------
   app.get('/api/admin/backup-clean/items', (req, res) => {
     if (!requireAdmin(req, res)) return
-    const { month, type, q } = req.query
+    // `month`/`type` pick one; `months`/`types` take comma lists; `from`/`to` apply when no
+    // month is given — the same period shapes preview/export/delete accept.
+    const { month, type, q, from, to } = req.query
+    const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
     const page = Math.max(1, Number(req.query.page) || 1)
     const perPage = Math.min(200, Math.max(1, Number(req.query.per_page) || 50))
+    const months = month ? [month] : list(req.query.months)
+    const types = type && type !== 'all' ? [type] : list(req.query.types)
+    const cleanTypes = types.filter((t) => CLEANABLE.includes(t))
+    if (types.length && !cleanTypes.length) return res.json({ total: 0, page: 1, per_page: perPage, pages: 1, items: [] })
     const filters = {
-      months: month ? [month] : null,
-      types: type && type !== 'all' ? [type] : null,
+      months: months.length ? months : null,
+      from: from || undefined,
+      to: to || undefined,
+      types: cleanTypes.length ? cleanTypes : CLEANABLE,
       query: q,
       typeLabels: TYPE_LABEL,
     }

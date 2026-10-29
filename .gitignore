@@ -12,3 +12,4 @@ server/sqlite-backups/
 !.vscode/extensions.json
 *.tsbuildinfo
 server-restart.log
+.claude/settings.local.json

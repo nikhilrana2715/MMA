@@ -102,11 +102,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const backupCleanApi = {
   summary: () => req<Summary>('/summary'),
-  items: (p: { month: string; type?: string; q?: string; page?: number; perPage?: number }) =>
-    req<{ total: number; page: number; pages: number; items: Item[] }>(
-      `/items?month=${encodeURIComponent(p.month)}&type=${encodeURIComponent(p.type || 'all')}` +
-        `&q=${encodeURIComponent(p.q || '')}&page=${p.page ?? 1}&per_page=${p.perPage ?? 50}`,
-    ),
+  /** Paged records for a selection — the same period/type shapes preview and delete take. */
+  items: (p: Selection & { q?: string; page?: number; perPage?: number }) => {
+    const qs = new URLSearchParams({ q: p.q || '', page: String(p.page ?? 1), per_page: String(p.perPage ?? 50) })
+    if (p.months?.length) qs.set('months', p.months.join(','))
+    if (p.from) qs.set('from', p.from)
+    if (p.to) qs.set('to', p.to)
+    if (p.types?.length) qs.set('types', p.types.join(','))
+    return req<{ total: number; page: number; pages: number; items: Item[] }>(`/items?${qs}`)
+  },
   preview: (s: Selection) => req<Preview>('/preview', { method: 'POST', body: JSON.stringify(s) }),
   del: (s: Selection & { soft: boolean; expected_count: number; backup_taken: boolean }) =>
     req<{ job_id: string; total: number; bytes: number }>('/delete', { method: 'POST', body: JSON.stringify(s) }),
@@ -132,7 +136,12 @@ export async function downloadExport(s: Selection): Promise<string> {
     }
     throw new Error(msg)
   }
-  const name = `backup_${s.from || 'all'}_to_${s.to || 'all'}.zip`
+  const months = [...(s.months ?? [])].sort()
+  const period = months.length
+    ? months.length <= 3 ? months.join('_') : `${months[0]}_to_${months[months.length - 1]}`
+    : `${s.from || 'start'}_to_${s.to || 'today'}`
+  const kinds = !s.types?.length ? 'all-types' : s.types.length <= 3 ? s.types.join('-') : `${s.types.length}-types`
+  const name = `backup_${period}_${kinds}.zip`
   const url = URL.createObjectURL(await r.blob())
   const a = document.createElement('a')
   a.href = url

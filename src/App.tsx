@@ -227,6 +227,7 @@ import { notify as raiseNotif } from './lib/notify/local'
 import type { AppNotif, CategoryId as NotifCategoryId, NotifAction, Priority as NotifPriority } from './lib/notify/types'
 import { SettingsView } from './components/SettingsView'
 import { UserHistoryPage } from './components/UserHistoryPanel'
+import { BackupCleanPage } from './components/BackupCleanPage'
 import { BackupView } from './components/BackupView'
 import { ShiftSplit } from './components/ShiftSplit'
 import { DateRangePicker, type DateRange } from './components/DateRangePicker'
@@ -250,8 +251,10 @@ import {
   useUnit,
   withTarget,
 } from './lib/unit'
-import { loadImports as loadPdImports, openImportModal, useImports } from './lib/pdImport'
+import { loadImports as loadPdImports, openImportModal, useImportModal, useImports } from './lib/pdImport'
 import type { PdRow } from './lib/pdReport'
+import { processKpiRowsForDate } from './lib/kpiToDashboard'
+import { PdImportModal } from './components/pd/PdImportModal'
 import { openImportModal as openProdImportModal } from './lib/prodImport'
 import { ProdKpiPage } from './components/ProdKpiPage'
 
@@ -373,7 +376,7 @@ export default function App({
   const [rows, setRows] = useState<MachineRow[]>([])
   const [navView, setView] = useState<View>(() => {
     const h = window.location.hash.replace('#', '') as View
-    const valid: View[] = ['dashboard', 'monthlyreport', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'kpi', 'kpidash', 'priority', 'machines', 'efficiency', 'downtime', 'assembly', 'cpk', 'cumulative', 'notes', 'history', 'settings', 'aboutapp', 'userhistory', 'backup', 'notifications']
+    const valid: View[] = ['dashboard', 'monthlyreport', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'kpi', 'kpidash', 'priority', 'machines', 'efficiency', 'downtime', 'assembly', 'cpk', 'cumulative', 'notes', 'history', 'settings', 'aboutapp', 'userhistory', 'backup', 'backupclean', 'notifications']
     return valid.includes(h) ? h : 'dashboard'
   })
   const unit = useUnit()
@@ -395,7 +398,7 @@ export default function App({
     // behind the Monthly Report cards, and every workspace has them. Left out of this list a
     // page opens and is thrown straight back to the Dashboard, which is what clicking the
     // Cp-Cpk card did: the card routed correctly, the guard undid it in the same tick.
-    const always: View[] = ['settings', 'aboutapp', 'userhistory', 'backup', 'notifications', 'notes', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'cpk', 'kpidash']
+    const always: View[] = ['settings', 'aboutapp', 'userhistory', 'backup', 'backupclean', 'notifications', 'notes', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'cpk', 'kpidash']
     if (allowed.includes(navView) || always.includes(navView)) return
     setView(allowed[0] ?? 'settings')
   }, [unit, navView])
@@ -657,7 +660,7 @@ export default function App({
         return
       }
       const h = window.location.hash.replace('#', '')
-      const valid: View[] = ['dashboard', 'monthlyreport', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'kpi', 'kpidash', 'priority', 'machines', 'efficiency', 'downtime', 'assembly', 'cpk', 'cumulative', 'notes', 'history', 'settings', 'aboutapp', 'userhistory', 'backup', 'notifications']
+      const valid: View[] = ['dashboard', 'monthlyreport', 'monthlyplan', 'routecard', 'maintenancereport', 'toolingreport', 'purchasereport', 'kpi', 'kpidash', 'priority', 'machines', 'efficiency', 'downtime', 'assembly', 'cpk', 'cumulative', 'notes', 'history', 'settings', 'aboutapp', 'userhistory', 'backup', 'backupclean', 'notifications']
       setView((valid.includes(h as View) ? (h as View) : 'dashboard'))
     }
     window.addEventListener('popstate', onPop)
@@ -673,51 +676,156 @@ export default function App({
     prevOverlayOpen.current = open
   }, [navOpen, showImport, showSave, showAddNote, breakdown, machineDetail, machineRange, compareMc, uploadDetail])
 
-  // Dates that have data, newest first; the dashboard shows one of these.
-  const availableDates = useMemo(
-    () => Array.from(new Set(uploads.map((u) => u.uploadDate).filter(Boolean))).sort().reverse(),
-    [uploads],
+  // Load PD Report / monthly KPI imports across the workspace so the dashboard has immediate access
+  const pdImports = useImports()
+  const pdModalOpen = useImportModal()
+
+  useEffect(() => {
+    void loadPdImports()
+  }, [unit])
+
+  const pdMonthRows = useMemo(() => {
+    const byMonth = new Map<string, { at: number; rows: PdRow[] }>()
+    for (const im of pdImports) {
+      const at = im.savedAt || 0
+      const groups = new Map<string, PdRow[]>()
+      for (const r of im.rows) {
+        const own = String(r.date || '').slice(0, 7)
+        // A sheet with no dates falls back to the month chosen on the import screen.
+        const m = /^\d{4}-\d{2}$/.test(own) ? own : im.month || ''
+        if (!m) continue
+        const list = groups.get(m)
+        if (list) list.push(r)
+        else groups.set(m, [r])
+      }
+      for (const [m, rows] of groups) {
+        const cur = byMonth.get(m)
+        if (!cur || at >= cur.at) byMonth.set(m, { at, rows })
+      }
+    }
+    return new Map([...byMonth].map(([m, v]) => [m, v.rows]))
+  }, [pdImports])
+
+  const pdMonths = useMemo(() => [...pdMonthRows.keys()].sort(), [pdMonthRows])
+
+  const newestImportId = useMemo(
+    () => [...pdImports].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))[0]?.id ?? '',
+    [pdImports],
   )
+
+  useEffect(() => setKpiMonth(null), [newestImportId, unit])
+
+  // Fast index of KPI rows grouped by exact date 'YYYY-MM-DD'
+  const pdRowsByDate = useMemo(() => {
+    const map = new Map<string, PdRow[]>()
+    for (const rows of pdMonthRows.values()) {
+      for (const r of rows) {
+        const d = String(r.date || '').trim()
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          const list = map.get(d)
+          if (list) list.push(r)
+          else map.set(d, [r])
+        }
+      }
+    }
+    return map
+  }, [pdMonthRows])
+
+  const latestKpiDate = useMemo(() => {
+    const keys = Array.from(pdRowsByDate.keys()).sort().reverse()
+    return keys[0] ?? ''
+  }, [pdRowsByDate])
+
+  // Dates that have data (from either legacy daily uploads or monthly KPI reports), newest first;
+  // the dashboard shows one of these.
+  const availableDates = useMemo(() => {
+    const set = new Set<string>(uploads.map((u) => u.uploadDate).filter(Boolean))
+    for (const d of pdRowsByDate.keys()) {
+      set.add(d)
+    }
+    return Array.from(set).sort().reverse()
+  }, [uploads, pdRowsByDate])
+
+  const maxPickerDate = availableDates[0] && availableDates[0] > todayISO() ? availableDates[0] : todayISO()
+
   // The day currently on the dashboard: the user's pick (from the date shortcut) if set,
-  // else the CURRENT production day (flips at 7 AM). So each morning the dashboard starts
-  // fresh/empty until that day's Excel is imported; yesterday is browsable via the chips.
+  // else the CURRENT production day (flips at 7 AM). If today has no report yet, the
+  // "No report for <day>" screen offers the days that do have data.
   const activeDate = activeProductionDate(new Date(clock))
   const effectiveDate = dashboardDate || activeDate
-  // All uploaded reports for that day (Shift 1 + Shift 2 combine).
+
+  // All uploaded reports for that day (Shift 1 + Shift 2 combine) - legacy daily uploads
   const dayUploads = useMemo(
     () => uploads.filter((u) => u.uploadDate === effectiveDate),
     [uploads, effectiveDate],
   )
 
+  // Monthly KPI processed data for the effective date (Primary single source of truth)
+  const kpiDayData = useMemo(() => {
+    const kRows = pdRowsByDate.get(effectiveDate)
+    if (kRows && kRows.length > 0) {
+      return processKpiRowsForDate(kRows, effectiveDate)
+    }
+    return null
+  }, [pdRowsByDate, effectiveDate])
+
+  const hasDataForEffectiveDate = dayUploads.length > 0 || (kpiDayData !== null && kpiDayData.rows.length > 0)
+
   const meta = useMemo(() => {
-    const source = dateRange
-      ? uploads.filter((u) => u.uploadDate >= dateRange.from && u.uploadDate <= dateRange.to)
-      : dayUploads
+    if (kpiDayData && !dateRange) {
+      const groups = [...kpiDayData.groups].sort((a, b) => groupRank(a, unit) - groupRank(b, unit))
+      const reasons = [...kpiDayData.downtimeReasons]
+      const fileName = `Monthly KPI — ${effectiveDate}`
+      return { groups, reasons, fileName }
+    }
     const groups: string[] = []
     const reasons: string[] = []
-    for (const u of source) {
+    if (dateRange) {
+      const datesInRange = availableDates.filter((d) => d >= dateRange.from && d <= dateRange.to)
+      for (const d of datesInRange) {
+        const kRows = pdRowsByDate.get(d)
+        if (kRows && kRows.length > 0) {
+          const processed = processKpiRowsForDate(kRows, d)
+          for (const g of processed.groups) if (!groups.includes(g)) groups.push(g)
+          for (const rn of processed.downtimeReasons) if (!reasons.includes(rn)) reasons.push(rn)
+        } else {
+          const ups = uploads.filter((u) => u.uploadDate === d)
+          for (const u of ups) {
+            for (const g of u.groups) if (!groups.includes(g)) groups.push(g)
+            for (const rn of u.downtimeReasons) if (!reasons.includes(rn)) reasons.push(rn)
+          }
+        }
+      }
+      const fileName = `${new Date(dateRange.from + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(
+        dateRange.to + 'T00:00:00',
+      ).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · ${datesInRange.length} day(s)`
+      groups.sort((a, b) => groupRank(a, unit) - groupRank(b, unit))
+      return { groups, reasons, fileName }
+    }
+    for (const u of dayUploads) {
       for (const g of u.groups) if (!groups.includes(g)) groups.push(g)
       for (const rn of u.downtimeReasons) if (!reasons.includes(rn)) reasons.push(rn)
     }
-    const fileName = dateRange
-      ? `${new Date(dateRange.from + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${new Date(
-          dateRange.to + 'T00:00:00',
-        ).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · ${source.length} file(s)`
-      : dayUploads.length === 0
+    const fileName =
+      dayUploads.length === 0
         ? ''
         : dayUploads.length === 1
           ? dayUploads[0].fileName
           : `${dayUploads.length} files`
     groups.sort((a, b) => groupRank(a, unit) - groupRank(b, unit))
     return { groups, reasons, fileName }
-  }, [dayUploads, dateRange, uploads])
+  }, [dayUploads, dateRange, uploads, kpiDayData, availableDates, pdRowsByDate, unit, effectiveDate])
 
-  // Rebuild the editable working rows whenever the viewed day (or its uploads) changes.
+  // Rebuild the editable working rows whenever the viewed day (or its uploads / KPI data) changes.
   useEffect(() => {
+    if (kpiDayData) {
+      setRows(kpiDayData.rows)
+      return
+    }
     let id = 0
     const out = dayUploads.flatMap((u) => u.rows).map((r) => roundRow({ ...r, id: id++ }))
     setRows(prioritise(out))
-  }, [dayUploads])
+  }, [dayUploads, kpiDayData])
 
   // 7 AM daily rollover: once a production day has passed, auto-save its report to
   // Meeting history (a stable id keeps it a single entry). The dashboard itself
@@ -728,23 +836,36 @@ export default function App({
     for (const date of availableDates) {
       if (date >= activeDate || saved.has(date)) continue
       const dayUps = uploads.filter((u) => u.uploadDate === date)
-      if (!dayUps.length) continue
-      let id = 0
-      const dayRows = prioritise(dayUps.flatMap((u) => u.rows).map((r) => roundRow({ ...r, id: id++ })))
-      const k = computeKpis(dayRows)
-      const groups: string[] = []
-      const reasons: string[] = []
-      for (const u of dayUps) {
-        for (const g of u.groups) if (!groups.includes(g)) groups.push(g)
-        for (const rn of u.downtimeReasons) if (!reasons.includes(rn)) reasons.push(rn)
+      const kRows = pdRowsByDate.get(date)
+      let dayRows: MachineRow[] = []
+      let groups: string[] = []
+      let reasons: string[] = []
+      let fileName = ''
+      if (kRows && kRows.length > 0) {
+        const processed = processKpiRowsForDate(kRows, date)
+        dayRows = processed.rows
+        groups = processed.groups
+        reasons = processed.downtimeReasons
+        fileName = `Monthly KPI — ${date}`
+      } else if (dayUps.length) {
+        let id = 0
+        dayRows = prioritise(dayUps.flatMap((u) => u.rows).map((r) => roundRow({ ...r, id: id++ })))
+        for (const u of dayUps) {
+          for (const g of u.groups) if (!groups.includes(g)) groups.push(g)
+          for (const rn of u.downtimeReasons) if (!reasons.includes(rn)) reasons.push(rn)
+        }
+        fileName = dayUps.length === 1 ? dayUps[0].fileName : `${dayUps.length} files`
+      } else {
+        continue
       }
+      const k = computeKpis(dayRows)
       markAutosaved(date)
       ;(async () => {
         const savedMeeting = await persistMeeting({
           id: `auto-${date}`,
           meetingDate: date,
           shift: 'Shift 1 & 2',
-          fileName: dayUps.length === 1 ? dayUps[0].fileName : `${dayUps.length} files`,
+          fileName,
           note: 'Auto-saved at 7 AM day rollover',
           groups,
           downtimeReasons: reasons,
@@ -758,7 +879,7 @@ export default function App({
         setHistory((h) => [savedMeeting, ...h.filter((x) => x.id !== savedMeeting.id)])
       })()
     }
-  }, [availableDates, activeDate, uploads, uploadsLoaded])
+  }, [availableDates, activeDate, uploads, uploadsLoaded, pdRowsByDate])
 
   // Load meetings + notes, stay in sync live (SSE) and receive activity notifications.
   useEffect(() => {
@@ -975,9 +1096,13 @@ export default function App({
   }, [])
 
   const resetRows = useCallback(() => {
+    if (kpiDayData) {
+      setRows(kpiDayData.rows)
+      return
+    }
     let id = 0
     setRows(prioritise(dayUploads.flatMap((u) => u.rows).map((r) => roundRow({ ...r, id: id++ }))))
-  }, [dayUploads])
+  }, [dayUploads, kpiDayData])
   const exportCsv = useCallback(() => {
     const headers = [
       'M/C', 'Item Code', 'Operator', 'Cycle Time', 'Plan Qty',
@@ -1137,11 +1262,17 @@ export default function App({
   // the date-range view, which needs to look across many days at once.
   const rowsForDate = useCallback(
     (date: string): MachineRow[] => {
+      // 1) First check KPI rows for this date (Single Source of Truth)
+      const kRows = pdRowsByDate.get(date)
+      if (kRows && kRows.length > 0) {
+        return processKpiRowsForDate(kRows, date).rows
+      }
+      // 2) Fallback to uploaded shift sheets
       const ups = uploads.filter((u) => u.uploadDate === date)
       let id = 1
       return prioritise(ups.flatMap((u) => u.rows).map((r) => roundRow({ ...r, id: id++ })))
     },
-    [uploads],
+    [pdRowsByDate, uploads],
   )
 
   // When a date range is active: every date's rows (already group + shift filtered)
@@ -1569,69 +1700,11 @@ export default function App({
    * Dashboard can work across them. The KPI page reads only the converted one — that is its
    * own concern, and it keeps making it.
    */
-  const pdImports = useImports()
   /**
-   * Fetched only on the screens that read it.
-   *
-   * The PD Report is by far the biggest thing the server holds — several months of a
-   * thousand-odd rows each, about eight megabytes uncompressed — and the Dashboard does not
-   * use a single row of it. Pulling it on every load was most of what made the app feel slow
-   * on the plant's Wi-Fi. The KPI page loads it itself on mount, so opening it still works;
-   * this covers the KPI Dashboard and the Month Range pill beside it.
+   * PD Report imports and monthly rows are loaded at the top level
+   * so the Production Dashboard, Month Range, and KPI Dashboard
+   * all work from monthly KPI imports as single source of truth.
    */
-  useEffect(() => {
-    if (view !== 'kpi' && view !== 'kpidash') return
-    void loadPdImports()
-  }, [unit, view])
-  /**
-   * Every imported month, with the rows behind it.
-   *
-   * The plant sends one workbook per month, so June, July and August are three separate
-   * imports; a trend has to read them all, and the KPI page reads whichever one covers the
-   * month picked in its header.
-   *
-   * When two imports cover the same month (a corrected re-upload), the newer one wins outright
-   * rather than being added to the older — that would double every figure for that month. The
-   * KPI page settles that tie the same way, so the two screens never read different rows.
-   */
-  const pdMonthRows = useMemo(() => {
-    const byMonth = new Map<string, { at: number; rows: PdRow[] }>()
-    for (const im of pdImports) {
-      const at = im.savedAt || 0
-      const groups = new Map<string, PdRow[]>()
-      for (const r of im.rows) {
-        const own = String(r.date || '').slice(0, 7)
-        // A sheet with no dates falls back to the month chosen on the import screen.
-        const m = /^\d{4}-\d{2}$/.test(own) ? own : im.month || ''
-        if (!m) continue
-        const list = groups.get(m)
-        if (list) list.push(r)
-        else groups.set(m, [r])
-      }
-      for (const [m, rows] of groups) {
-        const cur = byMonth.get(m)
-        if (!cur || at >= cur.at) byMonth.set(m, { at, rows })
-      }
-    }
-    return new Map([...byMonth].map(([m, v]) => [m, v.rows]))
-  }, [pdImports])
-
-  /** Months there is data for, ascending — what the range picker may offer. */
-  const pdMonths = useMemo(() => [...pdMonthRows.keys()].sort(), [pdMonthRows])
-
-  /** The most recent upload, whichever month it covers. */
-  const newestImportId = useMemo(
-    () => [...pdImports].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))[0]?.id ?? '',
-    [pdImports],
-  )
-
-  /*
-   * A fresh upload — or a different workspace — releases a pinned month.
-   * Someone who has just imported September's workbook means to look at September; leaving
-   * the page on the August they pinned last week reads as a broken import. Setting it back
-   * to null re-derives the newest month there is data for.
-   */
-  useEffect(() => setKpiMonth(null), [newestImportId, unit])
 
   /**
    * The month the KPI page is showing.
@@ -2879,9 +2952,10 @@ ${why}`)
                 {view === 'aboutapp' && t('About Application')}
                 {view === 'userhistory' && t('User Activity')}
                 {view === 'backup' && t('Backup')}
+                {view === 'backupclean' && t('Backup Clean')}
                 {view === 'notifications' && t('Notification Centre')}
               </h1>
-              {view !== 'assembly' && view !== 'monthlyreport' && view !== 'monthlyplan' && view !== 'routecard' && view !== 'maintenancereport' && view !== 'toolingreport' && view !== 'purchasereport' && view !== 'kpidash' && view !== 'backup' && view !== 'userhistory' && view !== 'notifications' && (
+              {view !== 'assembly' && view !== 'monthlyreport' && view !== 'monthlyplan' && view !== 'routecard' && view !== 'maintenancereport' && view !== 'toolingreport' && view !== 'purchasereport' && view !== 'kpidash' && view !== 'backup' && view !== 'backupclean' && view !== 'userhistory' && view !== 'notifications' && (
                 <div className="flex items-center gap-1.5 text-[11px] md:text-xs truncate" style={{ color: 'var(--ink-hint)' }}>
                   <CalendarDays size={12} className="shrink-0" />
                   <span className="truncate">
@@ -3434,7 +3508,7 @@ ${why}`)
                       <input
                         type="date"
                         value={effectiveDate}
-                        max={todayISO()}
+                        max={maxPickerDate}
                         onChange={(e) => setDashboardDate(e.target.value || '')}
                         className="text-[13px] font-semibold text-slate-800 bg-transparent outline-none min-w-0 w-[8.4rem]"
                         title="Pick a day to view its Shift 1 + Shift 2"
@@ -3451,7 +3525,15 @@ ${why}`)
                       value={dateRange}
                       onApply={setDateRange}
                       onClear={() => setDateRange(null)}
-                      maxDate={todayISO()}
+                      maxDate={maxPickerDate}
+                      kpiActive={kpiDayData !== null}
+                      onKpiDashboard={() => {
+                        if (dateRange) {
+                          setDateRange({ ...dateRange })
+                        } else if (latestKpiDate) {
+                          setDashboardDate(latestKpiDate)
+                        }
+                      }}
                     />
                   )}
 
@@ -3542,7 +3624,7 @@ ${why}`)
                 </button>
               </div>
             </div>
-          ) : dataView && !dateRange && dayUploads.length === 0 ? (
+          ) : dataView && !dateRange && !hasDataForEffectiveDate ? (
             /* A date was picked that has no report — guide back to a day with data. */
             <div className="bento bento-pad text-center py-16">
               <div className="w-16 h-16 mx-auto rounded-2xl grid place-items-center bg-amber-100 text-amber-600 shadow-sm mb-4">
@@ -4108,8 +4190,9 @@ ${why}`)
           )}
 
           {/* ---------- USER HISTORY (admin only) ---------- */}
-          {view === 'userhistory' && <UserHistoryPage me={user.username} isAdmin={isAdmin} onBackup={() => go('backup')} />}
+          {view === 'userhistory' && <UserHistoryPage me={user.username} isAdmin={isAdmin} onBackup={() => go('backup')} onBackupClean={() => go('backupclean')} />}
           {view === 'backup' && <BackupView onBack={() => go('userhistory')} />}
+          {view === 'backupclean' && <BackupCleanPage isAdmin={isAdmin} onBack={() => go('userhistory')} />}
           {view === 'notifications' && <NotificationCentre onAction={handleNotifAction} />}
 
           {/* ---------- MEETING / UPLOAD / ACTIVITY HISTORY ---------- */}
@@ -4254,6 +4337,10 @@ ${why}`)
       {showUploadChoice && (
         <UploadChoiceModal
           onClose={() => setShowUploadChoice(false)}
+          onMonthlyKpi={() => {
+            setShowUploadChoice(false)
+            openImportModal()
+          }}
           onMorningMeeting={() => {
             setShowUploadChoice(false)
             setShowImport(true)
@@ -4264,6 +4351,10 @@ ${why}`)
             setShowPvaUpload(true)
           }}
         />
+      )}
+
+      {pdModalOpen && view !== 'kpi' && view !== 'kpidash' && (
+        <PdImportModal />
       )}
 
       {showPvaUpload && (

@@ -26,7 +26,6 @@ import { adminApi, type HistoryEvent, type HistoryUser } from '../lib/auth'
 import { LEVEL_INK, LEVEL_LABEL, type AccessMap } from '../lib/access'
 import { UNITS } from '../lib/unit'
 import { UserAccessModal } from './UserAccessModal'
-import { BackupCleanModal } from './BackupCleanModal'
 import { StorageModal } from './StorageModal'
 
 type Tab = 'users' | 'session' | 'delete' | 'import' | 'meeting'
@@ -215,7 +214,17 @@ function UserDetailModal({ user, onClose, onAccess }: { user: HistoryUser; onClo
 }
 
 /** Admin-only page: who signed in, imported, deleted — everything the team did. */
-export function UserHistoryPage({ me, isAdmin = false, onBackup }: { me: string; isAdmin?: boolean; onBackup?: () => void }) {
+export function UserHistoryPage({
+  me,
+  isAdmin = false,
+  onBackup,
+  onBackupClean,
+}: {
+  me: string
+  isAdmin?: boolean
+  onBackup?: () => void
+  onBackupClean?: () => void
+}) {
   const [tab, setTab] = useState<Tab>('users')
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
@@ -224,7 +233,6 @@ export function UserHistoryPage({ me, isAdmin = false, onBackup }: { me: string;
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
   const [q, setQ] = useState('')
-  const [showClean, setShowClean] = useState(false)
   const [showStorage, setShowStorage] = useState(false)
   const [detail, setDetail] = useState<HistoryUser | null>(null)
   /** The user whose access panel is open. */
@@ -581,14 +589,13 @@ export function UserHistoryPage({ me, isAdmin = false, onBackup }: { me: string;
           <button
             className="icon-btn !text-white"
             style={{ background: '#dc2626', borderColor: '#dc2626' }}
-            onClick={() => setShowClean(true)}
+            onClick={onBackupClean}
           >
             <Trash2 size={14} /> Open Backup Clean
           </button>
         </div>
       )}
 
-      {showClean && <BackupCleanModal onClose={() => setShowClean(false)} />}
       {showStorage && <StorageModal onClose={() => setShowStorage(false)} />}
 
       {detail && (

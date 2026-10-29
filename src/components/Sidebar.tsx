@@ -44,7 +44,7 @@ export type View =
   | 'userhistory'
   | 'backup'
   | 'notifications'
-  | 'backup'
+  | 'backupclean'
 
 const NAV_ITEM: Record<string, { label: string; icon: typeof LayoutDashboard }> = {
   dashboard: { label: 'Dashboard', icon: LayoutDashboard },

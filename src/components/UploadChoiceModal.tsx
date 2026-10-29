@@ -11,10 +11,12 @@ import { useT } from '../lib/i18n'
  * contents; asking once is a question the person already knows the answer to.
  */
 export function UploadChoiceModal({
+  onMonthlyKpi,
   onMorningMeeting,
   onPlanVsAch,
   onClose,
 }: {
+  onMonthlyKpi?: () => void
   onMorningMeeting: () => void
   onPlanVsAch: () => void
   onClose: () => void
@@ -32,16 +34,26 @@ export function UploadChoiceModal({
     title: string,
     desc: string,
     onClick: () => void,
+    isPrimary?: boolean,
   ) => (
     <button
       onClick={onClick}
-      className="bento bento-pad text-left flex items-start gap-3 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition w-full"
+      className={`bento bento-pad text-left flex items-start gap-3 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition w-full ${
+        isPrimary ? 'ring-2 ring-indigo-500/50 bg-indigo-50/20' : ''
+      }`}
     >
       <div className="w-11 h-11 shrink-0 rounded-2xl grid place-items-center text-white shadow-sm" style={{ background: grad }}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[15px] font-bold text-slate-800 leading-tight">{t(title)}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[15px] font-bold text-slate-800 leading-tight">{t(title)}</div>
+          {isPrimary && (
+            <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 tracking-wide">
+              Primary
+            </span>
+          )}
+        </div>
         <div className="text-[12.5px] leading-relaxed mt-0.5" style={{ color: 'var(--ink-2)' }}>
           {t(desc)}
         </div>
@@ -71,11 +83,20 @@ export function UploadChoiceModal({
         </div>
 
         <div className="p-4 md:p-5 flex flex-col gap-3">
+          {onMonthlyKpi &&
+            choice(
+              <FileSpreadsheet size={22} />,
+              'linear-gradient(150deg,#0ea5e9,#3b82f6 55%,#6366f1)',
+              'Monthly KPI Excel (Single Source of Truth)',
+              'Upload full month KPI sheet once (e.g. KPI_FEB_2026.xlsx). Auto-calculates 8h Plan, Actual Plan, Backlog, and Efficiency date-wise.',
+              onMonthlyKpi,
+              true,
+            )}
           {choice(
             <ClipboardList size={22} />,
             'linear-gradient(150deg,#4f46e5,#7c3aed 55%,#db2777)',
-            'Morning Meeting',
-            'The machine-by-machine shift report — plan, achievement, downtime and remarks. This is what the dashboard is built from.',
+            'Daily Shift Report',
+            'Daily machine-by-machine report for Shift 1 / Shift 2. Use when you need to upload individual shift sheets.',
             onMorningMeeting,
           )}
           {choice(

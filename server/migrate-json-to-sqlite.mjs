@@ -471,7 +471,7 @@ async function migrateJsonDataOnce(dataDir, database) {
 export async function migrateJsonData(dataDir, database = openDatabase(dataDir)) {
   try {
     const report = await migrateJsonDataOnce(dataDir, database)
-    if (report.backupPath) writeMigrationReports(report.backupPath, report)
+    if (report.backupPath && fs.existsSync(report.backupPath)) writeMigrationReports(report.backupPath, report)
     return report
   } catch (error) {
     const report = {
