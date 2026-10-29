@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import {
-  Factory,
+  Columns2,
+  Crosshair,
+  FileText,
   User,
   Lock,
   Mail,
@@ -23,7 +25,28 @@ import { useT } from '../../lib/i18n'
 
 type Mode = 'start' | 'choose' | 'login' | 'register' | 'forgot'
 
-const GRAD = 'linear-gradient(150deg,#4f46e5,#7c3aed 55%,#db2777)'
+const GRAD = 'linear-gradient(150deg,#0a1a3f,#0d2a66 55%,#123b8c)'
+
+/* The form card is light in BOTH themes, so its colours are fixed hex values rather than
+   text-slate-* / bg-white — the app's dark theme remaps those classes globally. */
+const INPUT_BOX =
+  'mt-1 flex items-center gap-2 rounded-xl border border-[#d5ddea] bg-[#ffffff] px-3 focus-within:border-[#2563eb] focus-within:ring-2 focus-within:ring-[#bfdbfe] transition'
+const INPUT = 'flex-1 min-w-0 bg-transparent outline-none py-2.5 text-sm text-[#0f172a] placeholder:text-[#94a3b8]'
+const LABEL = 'text-[13px] font-semibold text-[#334155]'
+const H2 = 'text-2xl font-extrabold text-[#0b1530]'
+const SUB = 'text-[#52607a]'
+const LINK = 'font-semibold text-[#1d5bf0] hover:text-[#0b3fc4]'
+const MUTED_LINK = 'font-semibold text-[#64748b] hover:text-[#0b1530]'
+
+/** App mark: an "M" drawn as a chart line inside an axis corner. */
+function AppMark({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3.5 3v17.5H21" />
+      <path d="M7.5 16.5V7l4.5 6 4.5-6v9.5" />
+    </svg>
+  )
+}
 
 function newCaptcha() {
   const c = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -52,9 +75,9 @@ function Field({
   const t = useT()
   return (
     <label className="block">
-      <span className="text-[13px] font-semibold text-white/85">{t(label)}</span>
-      <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 focus-within:border-white/50 focus-within:bg-white/15 focus-within:ring-2 focus-within:ring-white/20 transition">
-        <span className="text-white/60 shrink-0">{icon}</span>
+      <span className={LABEL}>{t(label)}</span>
+      <div className={INPUT_BOX}>
+        <span className="text-[#7b8aa3] shrink-0">{icon}</span>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -62,7 +85,7 @@ function Field({
           placeholder={placeholder}
           autoComplete={autoComplete}
           inputMode={inputMode}
-          className="flex-1 min-w-0 bg-transparent outline-none py-2.5 text-sm text-white placeholder-white/45"
+          className={INPUT}
         />
       </div>
     </label>
@@ -84,17 +107,17 @@ function PwField({
   const t = useT()
   return (
     <label className="block">
-      <span className="text-[13px] font-semibold text-white/85">{t(label)}</span>
-      <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 focus-within:border-white/50 focus-within:bg-white/15 focus-within:ring-2 focus-within:ring-white/20 transition">
-        <Lock size={16} className="text-white/60 shrink-0" />
+      <span className={LABEL}>{t(label)}</span>
+      <div className={INPUT_BOX}>
+        <Lock size={16} className="text-[#7b8aa3] shrink-0" />
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           type={show ? 'text' : 'password'}
           autoComplete={autoComplete}
-          className="flex-1 min-w-0 bg-transparent outline-none py-2.5 text-sm text-white placeholder-white/45"
+          className={INPUT}
         />
-        <button type="button" onClick={() => setShow((s) => !s)} className="text-white/60 hover:text-white shrink-0">
+        <button type="button" onClick={() => setShow((s) => !s)} className="text-[#7b8aa3] hover:text-[#0b1530] shrink-0" aria-label={show ? 'Hide password' : 'Show password'}>
           {show ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
@@ -107,17 +130,23 @@ function Primary({
   onClick,
   loading,
   disabled,
+  big,
 }: {
   children: React.ReactNode
   onClick: () => void
   loading?: boolean
   disabled?: boolean
+  /** The landing call-to-action: taller, larger label. */
+  big?: boolean
 }) {
   return (
     <button
       onClick={onClick}
       disabled={loading || disabled}
-      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-500/90 hover:bg-indigo-500 ring-1 ring-white/25 disabled:opacity-60 text-white font-semibold px-4 py-3 shadow-lg shadow-indigo-950/40 transition"
+      className={`w-full inline-flex items-center justify-center gap-2.5 rounded-xl text-white font-bold px-4 transition hover:brightness-110 active:brightness-95 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#bfdbfe] ${
+        big ? 'py-4 text-[17px] xl:text-[20px] xl:py-[17px]' : 'py-3.5 text-[15px]'
+      }`}
+      style={{ background: 'linear-gradient(180deg,#1f6dff,#0756f2)', boxShadow: '0 14px 30px rgba(7,86,242,0.38), inset 0 1px 0 rgba(255,255,255,0.28)' }}
     >
       {loading ? <Loader2 size={18} className="animate-spin" /> : children}
     </button>
@@ -125,11 +154,11 @@ function Primary({
 }
 
 function Alert({ msg }: { msg: string }) {
-  return <div className="text-sm text-red-50 bg-red-500/25 ring-1 ring-red-300/35 rounded-lg px-3 py-2">{msg}</div>
+  return <div role="alert" className="text-sm text-[#b91c1c] bg-[#fef2f2] ring-1 ring-[#fecaca] rounded-lg px-3 py-2">{msg}</div>
 }
 function Info({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-sm text-amber-50 bg-amber-400/20 ring-1 ring-amber-200/35 rounded-lg px-3 py-2">{children}</div>
+    <div className="text-sm text-[#92400e] bg-[#fffbeb] ring-1 ring-[#fde68a] rounded-lg px-3 py-2">{children}</div>
   )
 }
 
@@ -261,11 +290,27 @@ export function AuthScreen({
       setLUser(fUser)
     })
 
+  const headline = t('Run a sharper morning meeting.')
+  // English splits so "morning meeting." can carry the accent gradient; translations
+  // render whole, since the phrase does not split at the same place in Hindi/Gujarati.
+  const english = headline === 'Run a sharper morning meeting.'
+  const features = [
+    { icon: Columns2, label: 'Shift 1 & Shift 2 side by side' },
+    { icon: Crosshair, label: 'Priority machines & repeating issues' },
+    { icon: FileText, label: 'Notes, remarks & meeting history' },
+  ]
+  const accent = {
+    backgroundImage: 'linear-gradient(90deg,#3b82f6,#22c3ff)',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+  } as const
+
   return (
-    <div className="min-h-screen w-full relative" style={{ background: GRAD }}>
-      {/* Full-screen plant photo behind BOTH halves, under a brand-tinted scrim: heavier
-          on the left so the white copy reads, lighter on the right where the (frosted)
-          form card supplies its own contrast. No photo → the brand gradient shows. */}
+    <div className="min-h-screen w-full relative overflow-x-hidden" style={{ background: GRAD }}>
+      {/* Full-screen plant photo under a navy scrim: heavy across the top sky and down the
+          left for the white copy, light on the right so the plant shows behind the card.
+          No photo -> the navy gradient shows. */}
       {photoOk && (
         <>
           <img
@@ -273,96 +318,100 @@ export function AuthScreen({
             alt=""
             aria-hidden="true"
             className="fixed inset-0 w-full h-full object-cover"
-            style={{ objectPosition: "50% 62%" }}
+            style={{ objectPosition: '50% 42%', filter: 'saturate(1.08) brightness(1.04)' }}
             onError={() => setPhotoOk(false)}
           />
+          {/* Navy only where copy sits: a band down the left and across the sky. The plant
+              on the right stays bright, as in the design. */}
           <div
             className="fixed inset-0"
             style={{
               background:
-                'linear-gradient(100deg, rgba(49,29,122,0.90) 0%, rgba(76,45,158,0.66) 38%, rgba(124,58,237,0.34) 62%, rgba(219,39,119,0.28) 100%),' +
-                'linear-gradient(180deg, rgba(9,7,28,0.34) 0%, rgba(9,7,28,0.18) 40%, rgba(9,7,28,0.62) 100%)',
+                'linear-gradient(90deg, rgba(7,22,58,0.90) 0%, rgba(9,28,70,0.66) 28%, rgba(10,32,80,0.18) 50%, rgba(10,32,80,0) 66%),' +
+                'linear-gradient(180deg, rgba(8,22,60,0.78) 0%, rgba(8,22,60,0.30) 17%, rgba(8,22,60,0) 34%, rgba(5,16,44,0) 82%, rgba(5,16,44,0.28) 100%)',
             }}
           />
         </>
       )}
 
-      <div className="relative min-h-screen w-full grid lg:grid-cols-2">
-      {/* Branding panel (desktop) — sits directly on the shared background. */}
-      <div className="hidden lg:flex flex-col justify-between p-10 xl:p-14 text-white relative">
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl grid place-items-center bg-white/15 backdrop-blur ring-1 ring-white/20">
-            <Factory size={26} />
+      <div className="relative min-h-screen w-full flex flex-col">
+        {/* brand bar */}
+        <header className="flex items-center gap-4 xl:gap-[26px] px-5 sm:px-8 lg:px-12 xl:px-[60px] pt-6 lg:pt-10 xl:pt-[52px] text-white">
+          <div
+            className="w-12 h-12 xl:w-[66px] xl:h-[66px] rounded-[14px] grid place-items-center shrink-0 ring-1 ring-white/10"
+            style={{ background: 'linear-gradient(160deg,#2559d6,#1a43ad)', boxShadow: '0 10px 26px rgba(4,14,40,0.45)', color: '#e8efff' }}
+          >
+            <AppMark size={30} />
           </div>
           <div>
-            <div className="text-xl font-extrabold leading-tight drop-shadow-sm">{t('Morning Meeting')}</div>
-            <div className="text-sm text-white/80">{t('Production Dashboard')}</div>
+            <div className="text-lg xl:text-[28px] font-bold leading-tight tracking-tight">{t('Morning Meeting')}</div>
+            <div className="text-[13px] xl:text-[20px] text-white/85 leading-snug">{t('Production Dashboard')}</div>
           </div>
-        </div>
+        </header>
 
-        <div className="relative z-10">
-          <h1 className="text-4xl xl:text-5xl font-extrabold leading-tight" style={{ textShadow: '0 2px 18px rgba(0,0,0,0.45)' }}>
-            {t('Run a sharper morning meeting.')}
-          </h1>
-          <p className="mt-4 text-white/90 text-lg max-w-md" style={{ textShadow: '0 1px 10px rgba(0,0,0,0.45)' }}>
-            {t('Upload the shift report, see every machine below target first, and act on the biggest losses — on any device.')}
-          </p>
-          <div className="mt-8 flex flex-col gap-2.5">
-            {['Shift 1 & Shift 2 side by side', 'Priority machines & repeating issues', 'Notes, remarks & meeting history'].map(
-              (f) => (
-                <div
-                  key={f}
-                  className="inline-flex items-center gap-2 self-start rounded-lg bg-white/10 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5"
+        <main className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] xl:grid-cols-[minmax(0,1fr)_minmax(0,480px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,540px)] items-start gap-8 lg:gap-12 px-5 sm:px-8 lg:px-12 xl:pl-[60px] xl:pr-[95px] pt-10 lg:pt-16 xl:pt-[92px] pb-10">
+          {/* hero copy */}
+          <section className="text-white min-w-0 max-w-[720px]">
+            <h1
+              className="text-[38px] sm:text-[52px] lg:text-[50px] xl:text-[62px] 2xl:text-[76px] font-extrabold leading-[1.02] tracking-[-0.02em]"
+              style={{ textShadow: english ? undefined : '0 2px 18px rgba(0,0,0,0.35)' }}
+            >
+              {english ? (
+                <>
+                  <span style={{ textShadow: '0 2px 18px rgba(0,0,0,0.30)' }}>Run a sharper</span>
+                  <br />
+                  <span style={accent}>morning meeting</span>
+                  <span>.</span>
+                </>
+              ) : (
+                headline
+              )}
+            </h1>
+            <p
+              className="mt-5 xl:mt-7 text-white/95 text-base sm:text-lg lg:text-xl xl:text-[21px] 2xl:text-[24px] leading-[1.38] max-w-[640px]"
+              style={{ textShadow: '0 1px 10px rgba(0,0,0,0.35)' }}
+            >
+              {t('Upload the shift report, see every machine below target first, and act on the biggest losses — on any device.')}
+            </p>
+            <ul className="mt-7 xl:mt-8 hidden sm:flex flex-col gap-3 xl:gap-[13px]">
+              {features.map(({ icon: Icon, label }) => (
+                <li
+                  key={label}
+                  className="inline-flex items-center gap-4 xl:gap-[18px] self-start rounded-2xl px-5 xl:px-6 py-3 xl:py-[13px] border border-[rgba(125,175,255,0.34)]"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(16,40,92,0.62), rgba(10,28,70,0.62))',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(2,10,30,0.25)',
+                  }}
                 >
-                  <CheckCircle2 size={16} className="shrink-0" /> <span className="text-sm font-medium">{t(f)}</span>
-                </div>
-              ),
-            )}
-          </div>
-        </div>
+                  <Icon size={30} strokeWidth={1.9} className="shrink-0 text-[#2fd4f5]" />
+                  <span className="text-[16px] xl:text-[19.5px] font-semibold tracking-[-0.005em]">{t(label)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        <div className="relative z-10 text-xs text-white/60">v1.0 · Bento UI</div>
-      </div>
-
-      {/* Form panel — liquid-glass card: the photo stays visible through it, a blurred
-          + saturated backdrop keeps the text crisp, and a top specular sheen sells the glass. */}
-      <div className="flex items-center justify-center p-4 sm:p-6 md:p-8">
-        <div
-          className="relative w-full max-w-md rounded-3xl overflow-hidden ring-1 ring-white/25 my-6"
-          style={{
-            background:
-              'linear-gradient(160deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.07) 45%, rgba(255,255,255,0.13) 100%)',
-            backdropFilter: 'blur(28px) saturate(160%)',
-            WebkitBackdropFilter: 'blur(28px) saturate(160%)',
-            boxShadow: '0 20px 60px rgba(9,7,28,0.45), inset 0 1px 0 rgba(255,255,255,0.35)',
-          }}
-        >
-          {/* specular highlight along the top edge */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-28"
-            style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.22), transparent)' }}
-          />
-
-          <div className="relative p-6 sm:p-7 md:p-8">
-          {/* mobile logo */}
-          <div className="lg:hidden flex items-center gap-3 mb-6">
-            <div className="w-11 h-11 rounded-2xl grid place-items-center text-white shrink-0 ring-1 ring-white/25" style={{ background: GRAD }}>
-              <Factory size={22} />
-            </div>
-            <div>
-              <div className="font-extrabold text-white leading-tight">{t('Morning Meeting')}</div>
-              <div className="text-xs text-white/70">{t('Production Dashboard')}</div>
-            </div>
-          </div>
-
+          {/* Form card - light frosted glass; the plant shows faintly through it. */}
+          <div className="w-full min-w-0 flex justify-center lg:justify-end lg:mt-12 xl:mt-[52px]">
+            <div
+              className="relative w-full max-w-[540px] rounded-[26px] ring-1 ring-white/80"
+              style={{
+                background: 'linear-gradient(165deg, rgba(246,249,255,0.95), rgba(233,240,252,0.90))',
+                backdropFilter: 'blur(22px) saturate(150%)',
+                WebkitBackdropFilter: 'blur(22px) saturate(150%)',
+                boxShadow: '0 30px 80px rgba(2,10,40,0.40), inset 0 1px 0 rgba(255,255,255,0.95)',
+              }}
+            >
+              <div className="relative p-6 sm:p-9 xl:px-[46px] xl:py-[40px]">
           {/* ---- START ---- */}
           {mode === 'start' && (
             <div className="rise" onKeyDown={onEnter(() => go('choose'))}>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white">{t('Welcome 👋')}</h2>
-              <p className="mt-2 text-white/70">{t("Your factory's morning meeting, organized. Let's get you signed in.")}</p>
-              <div className="mt-8">
-                <Primary onClick={() => go('choose')}>
-                  {t('Get Started')} <ArrowRight size={18} />
+              <h2 className="text-[32px] xl:text-[40px] font-extrabold text-[#0b1226] tracking-[-0.02em] leading-tight">{t('Welcome 👋')}</h2>
+              <p className="mt-4 xl:mt-5 text-[16px] xl:text-[19.5px] leading-[1.5] text-[#3d4a63]">{t("Your factory's morning meeting, organized. Let's get you signed in.")}</p>
+              <div className="mt-6 xl:mt-[22px]">
+                <Primary big onClick={() => go('choose')}>
+                  {t('Get Started')} <ArrowRight size={22} strokeWidth={2.4} />
                 </Primary>
               </div>
             </div>
@@ -371,20 +420,20 @@ export function AuthScreen({
           {/* ---- CHOOSE ---- */}
           {mode === 'choose' && (
             <div className="rise" onKeyDown={onEnter(() => go('login'))}>
-              <h2 className="text-2xl font-extrabold text-white">{t('Continue')}</h2>
-              <p className="mt-2 text-white/70">{t('Log in to your account, or create a new one.')}</p>
+              <h2 className={H2}>{t('Continue')}</h2>
+              <p className={`mt-2 ${SUB}`}>{t('Log in to your account, or create a new one.')}</p>
               <div className="mt-8 flex flex-col gap-3">
                 <Primary onClick={() => go('login')}>
                   <LogIn size={18} /> {t('Login')}
                 </Primary>
                 <button
                   onClick={() => go('register')}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-white/12 ring-1 ring-white/25 hover:bg-white/20 text-white font-semibold px-4 py-3 shadow-lg shadow-indigo-950/30 transition"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#ffffff] ring-1 ring-[#d5ddea] hover:ring-[#2563eb] hover:text-[#0a56f0] text-[#0b1530] font-bold px-4 py-3.5 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#bfdbfe]"
                 >
                   <UserPlus size={18} /> {t('Register')}
                 </button>
               </div>
-              <button onClick={() => go('start')} className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-white/75 hover:text-white">
+              <button onClick={() => go('start')} className={`mt-6 inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}>
                 <ArrowLeft size={16} /> {t('Back')}
               </button>
             </div>
@@ -394,8 +443,8 @@ export function AuthScreen({
           {mode === 'login' && (
             <div className="rise flex flex-col gap-4" onKeyDown={onEnter(doLogin)}>
               <div>
-                <h2 className="text-2xl font-extrabold text-white">{isQa ? t('QA Login') : t('Login')}</h2>
-                <p className="mt-1 text-white/70 text-sm">
+                <h2 className={H2}>{isQa ? t('QA Login') : t('Login')}</h2>
+                <p className={`mt-1 text-sm ${SUB}`}>
                   {isQa ? t('Quality portal — sign in to upload reports.') : t('Welcome back — enter your details.')}
                 </p>
               </div>
@@ -404,11 +453,11 @@ export function AuthScreen({
               <PwField label="Password" value={lPw} onChange={setLPw} autoComplete="current-password" />
               {/* captcha */}
               <div>
-                <span className="text-[13px] font-semibold text-white/85">{t('Captcha')}</span>
+                <span className={LABEL}>{t('Captcha')}</span>
                 <div className="mt-1 flex items-center gap-2">
                   {/* Kept high-contrast on purpose — a captcha has to stay easy to read. */}
                   <div
-                    className="select-none px-4 py-2.5 rounded-xl font-extrabold text-lg tracking-[0.35em] text-slate-800 ring-1 ring-white/40"
+                    className="select-none px-4 py-2.5 rounded-xl font-extrabold text-lg tracking-[0.35em] text-slate-800 ring-1 ring-[#c7d2fe]"
                     style={{
                       background: 'repeating-linear-gradient(45deg,rgba(255,255,255,0.92),rgba(255,255,255,0.92) 6px,rgba(224,231,255,0.92) 6px,rgba(224,231,255,0.92) 12px)',
                       fontStyle: 'italic',
@@ -420,7 +469,7 @@ export function AuthScreen({
                   <button
                     type="button"
                     onClick={() => setCaptcha(newCaptcha())}
-                    className="w-10 h-10 grid place-items-center rounded-xl border border-white/25 bg-white/10 text-white/70 hover:bg-white/20 shrink-0"
+                    className="w-10 h-10 grid place-items-center rounded-xl border border-[#d5ddea] bg-[#ffffff] text-[#64748b] hover:text-[#0a56f0] hover:border-[#2563eb] shrink-0"
                     title="New captcha"
                   >
                     <RefreshCw size={16} />
@@ -429,7 +478,7 @@ export function AuthScreen({
                     value={lCap}
                     onChange={(e) => setLCap(e.target.value.toUpperCase())}
                     placeholder={t('Type it')}
-                    className="flex-1 min-w-0 rounded-xl border border-white/25 bg-white/10 px-3 py-2.5 text-sm text-white placeholder-white/45 outline-none focus:border-white/50 focus:bg-white/15 focus:ring-2 focus:ring-white/20 uppercase tracking-wider"
+                    className="flex-1 min-w-0 rounded-xl border border-[#d5ddea] bg-[#ffffff] px-3 py-2.5 text-sm text-[#0f172a] placeholder:text-[#94a3b8] outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#bfdbfe] uppercase tracking-wider"
                   />
                 </div>
               </div>
@@ -437,25 +486,25 @@ export function AuthScreen({
                 <LogIn size={18} /> {t('Login')}
               </Primary>
               <div className="flex items-center justify-between text-sm">
-                <button onClick={() => go('forgot')} className="font-semibold text-indigo-200 hover:text-white">
+                <button onClick={() => go('forgot')} className={LINK}>
                   {t('Forgot password?')}
                 </button>
-                <button onClick={() => go('register')} className="font-semibold text-white/75 hover:text-white">
+                <button onClick={() => go('register')} className={MUTED_LINK}>
                   {t('Create account')}
                 </button>
               </div>
-              <div className="pt-1 border-t border-white/20">
+              <div className="pt-1 border-t border-[#e2e8f0]">
                 <div className="flex items-center justify-between gap-2">
                   <button
                     onClick={() => (isQa ? (window.location.hash = '') : go('choose'))}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white mt-3"
+                    className={`inline-flex items-center gap-1.5 text-sm mt-3 ${MUTED_LINK}`}
                   >
                     <ArrowLeft size={16} /> {t('Back')}
                   </button>
                   {!isQa && (
                     <a
                       href="#admin-login"
-                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/75 hover:text-white mt-3"
+                      className={`inline-flex items-center gap-1.5 text-sm mt-3 ${LINK}`}
                       title="Admins sign in on a separate page"
                     >
                       <ShieldCheck size={15} /> {t('Admin login')}
@@ -468,7 +517,7 @@ export function AuthScreen({
                   <div className="mt-2">
                     <a
                       href="#qa-login"
-                      className="text-sm font-semibold text-white/60 hover:text-white"
+                      className={`text-sm ${MUTED_LINK}`}
                       title="Quality (QA) team signs in on a separate page"
                     >
                       QA
@@ -483,8 +532,8 @@ export function AuthScreen({
           {mode === 'register' && rStep === 'form' && (
             <div className="rise flex flex-col gap-3.5" onKeyDown={onEnter(sendRegOtp)}>
               <div>
-                <h2 className="text-2xl font-extrabold text-white">{t('Create account')}</h2>
-                <p className="mt-1 text-white/70 text-sm">{t("We'll send an OTP to your phone to verify.")}</p>
+                <h2 className={H2}>{t('Create account')}</h2>
+                <p className={`mt-1 text-sm ${SUB}`}>{t("We'll send an OTP to your phone to verify.")}</p>
               </div>
               {err && <Alert msg={err} />}
               <Field icon={<User size={16} />} label="Full Name" value={rFull} onChange={setRFull} placeholder="Nikhil Rana" autoComplete="name" />
@@ -497,7 +546,7 @@ export function AuthScreen({
               <Primary onClick={sendRegOtp} loading={busy}>
                 {t('Send OTP')} <ArrowRight size={18} />
               </Primary>
-              <button onClick={() => go(isQa ? 'login' : 'choose')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white">
+              <button onClick={() => go(isQa ? 'login' : 'choose')} className={`inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}>
                 <ArrowLeft size={16} /> {t('Back')}
               </button>
             </div>
@@ -505,8 +554,8 @@ export function AuthScreen({
           {mode === 'register' && rStep === 'otp' && (
             <div className="rise flex flex-col gap-4" onKeyDown={onEnter(doRegister)}>
               <div>
-                <h2 className="text-2xl font-extrabold text-white">{t('Verify your email')}</h2>
-                <p className="mt-1 text-white/70 text-sm">
+                <h2 className={H2}>{t('Verify your email')}</h2>
+                <p className={`mt-1 text-sm ${SUB}`}>
                   {t('Enter the 6-digit OTP sent to')} <b>{rEmail}</b>.
                 </p>
               </div>
@@ -522,10 +571,10 @@ export function AuthScreen({
                 <ShieldCheck size={18} /> {t('Register')}
               </Primary>
               <div className="flex items-center justify-between text-sm">
-                <button onClick={() => setRStep('form')} className="inline-flex items-center gap-1.5 font-semibold text-white/60 hover:text-white">
+                <button onClick={() => setRStep('form')} className={`inline-flex items-center gap-1.5 ${MUTED_LINK}`}>
                   <ArrowLeft size={16} /> {t('Edit details')}
                 </button>
-                <button onClick={sendRegOtp} className="font-semibold text-indigo-200 hover:text-white" disabled={busy}>
+                <button onClick={sendRegOtp} className={LINK} disabled={busy}>
                   {t('Resend OTP')}
                 </button>
               </div>
@@ -536,8 +585,8 @@ export function AuthScreen({
           {mode === 'forgot' && fStep === 'verify' && (
             <div className="rise flex flex-col gap-4" onKeyDown={onEnter(sendForgotOtp)}>
               <div>
-                <h2 className="text-2xl font-extrabold text-white">{t('Forgot password')}</h2>
-                <p className="mt-1 text-white/70 text-sm">{t('Verify your account to reset the password.')}</p>
+                <h2 className={H2}>{t('Forgot password')}</h2>
+                <p className={`mt-1 text-sm ${SUB}`}>{t('Verify your account to reset the password.')}</p>
               </div>
               {err && <Alert msg={err} />}
               <Field icon={<User size={16} />} label="User Name" value={fUser} onChange={setFUser} placeholder="nikhil123" />
@@ -545,7 +594,7 @@ export function AuthScreen({
               <Primary onClick={sendForgotOtp} loading={busy}>
                 {t('Verify')} <ArrowRight size={18} />
               </Primary>
-              <button onClick={() => go('login')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white">
+              <button onClick={() => go('login')} className={`inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}>
                 <ArrowLeft size={16} /> {t('Back to login')}
               </button>
             </div>
@@ -553,8 +602,8 @@ export function AuthScreen({
           {mode === 'forgot' && fStep === 'reset' && (
             <div className="rise flex flex-col gap-4" onKeyDown={onEnter(doReset)}>
               <div>
-                <h2 className="text-2xl font-extrabold text-white">{t('Reset password')}</h2>
-                <p className="mt-1 text-white/70 text-sm">
+                <h2 className={H2}>{t('Reset password')}</h2>
+                <p className={`mt-1 text-sm ${SUB}`}>
                   {fMethod === 'totp' ? (
                     <>Open your <b>Authenticator app</b>, enter the current 6-digit code and a new password.</>
                   ) : (
@@ -573,14 +622,15 @@ export function AuthScreen({
               <Primary onClick={doReset} loading={busy}>
                 <CheckCircle2 size={18} /> {t('Reset & Login')}
               </Primary>
-              <button onClick={() => setFStep('verify')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white">
+              <button onClick={() => setFStep('verify')} className={`inline-flex items-center gap-1.5 text-sm ${MUTED_LINK}`}>
                 <ArrowLeft size={16} /> {t('Back')}
               </button>
             </div>
           )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </main>
       </div>
     </div>
   )

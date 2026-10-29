@@ -18,7 +18,7 @@ export function QrCode({ value, size = 176 }: { value: string; size?: number }) 
     return (
       <div
         style={{ width: size, height: size }}
-        className="rounded-xl bg-slate-100 grid place-items-center text-xs text-slate-400 shrink-0"
+        className="rounded-xl bg-[#eef2f8] grid place-items-center text-xs text-[#7b8aa3] shrink-0"
       >
         Generating…
       </div>
@@ -30,7 +30,7 @@ export function QrCode({ value, size = 176 }: { value: string; size?: number }) 
       width={size}
       height={size}
       alt="Scan with your Authenticator app"
-      className="rounded-xl bg-white p-1.5 border border-slate-200 shrink-0"
+      className="rounded-xl bg-[#ffffff] p-1.5 border border-[#d5ddea] shrink-0"
     />
   )
 }
